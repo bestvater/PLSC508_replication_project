@@ -1,0 +1,1225 @@
+---
+title: 'PLSC 508: Replication & Extension Project'
+author: "Sam Bestvater"
+date: "Updated `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(cache = T)
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+
+```
+
+# Project Stage 1:
+
+## Bibliographic reference
+
+Larson, J.M. and Lewis, J.I., 2017. Ethnic networks. *American Journal of Political Science*, 61(2), pp.350-364.
+
+**Abstract:** Active research on a wide range of political contexts centers on ethnicity’s role in collective action. Many theories posit that information flows more easily in ethnically homogeneous areas, facilitating collective action, because social networks among coethnics are denser. Although this characterization is ubiquitous, little empirical work assesses it. Through a novel field experiment in a matched pair of villages in rural Uganda, this article directly examines word-of-mouth information spread and its relationship to ethnic diversity and networks. As expected, information spread more widely in the homogeneous village. However, unexpectedly, the more diverse village’s network is significantly denser. Using unusually detailed network data, we offer an explanation for why network density may hamper information dissemination in heterogeneous areas, showing why even slight hesitation to share information with people from other groups can have large aggregate effects.
+
+## GitHub URL
+
+https://github.com/bestvater/PLSC508_replication_project
+
+# Project Stage 2:
+
+```{r}
+# read in edgelists and node attributes from replication file
+attab <- read.csv('attab.csv', stringsAsFactors = F)
+attab <- attab[!is.na(attab$ID), ]
+attab$ID <- paste('id_', attab$ID, sep = '')
+
+attmu <- read.csv('attmu.csv', stringsAsFactors = F)
+attmu <- attmu[!is.na(attmu$ID), ]
+attmu$ID <- paste('id_', attmu$ID, sep = '')
+
+elab <- read.csv('elab.csv', stringsAsFactors = F)
+elab$Source <- paste('id_', elab$Source, sep = '')
+elab$Target <- paste('id_', elab$Target, sep = '')
+elab <- as.matrix(elab[,1:2])
+
+elmu <- read.csv('elmu.csv', stringsAsFactors = F)
+elmu$Source <- paste('id_', elmu$Source, sep = '')
+elmu$Target <- paste('id_', elmu$Target, sep = '')
+elmu <- as.matrix(elmu[,1:2])
+
+require(network)
+
+# build Abalang network
+n <- nrow(attab)
+abnet <- network.initialize(n, dir = T)
+network.vertex.names(abnet) <- attab$ID
+set.vertex.attribute(abnet, 'Hear', attab$Hear)
+set.vertex.attribute(abnet, 'Attend', attab$Attend)
+set.vertex.attribute(abnet, 'Seed', attab$Seed)
+set.vertex.attribute(abnet, 'Tribe', attab$Tribe)
+
+abnet[elab] <- 1
+set.vertex.attribute(abnet, 'degree', sna::degree(abnet))
+
+# build Mugana network
+n <- nrow(attmu)
+munet <- network.initialize(n, dir = T)
+network.vertex.names(munet) <- attmu$ID
+set.vertex.attribute(munet, 'Hear', attmu$Hear)
+set.vertex.attribute(munet, 'Attend', attmu$Attend)
+set.vertex.attribute(munet, 'Seed', attmu$Seed)
+set.vertex.attribute(munet, 'Tribe', attmu$Tribe)
+
+munet[elmu] <- 1
+set.vertex.attribute(munet, 'degree', sna::degree(munet))
+```
+
+## Plot of network(s) to be studied
+
+```{r}
+require(ggplot2)
+require(GGally)
+require(ggnetwork)
+theme_set(theme_bw())
+
+set.seed(8675309)
+
+abnet_fr <- ggnetwork(abnet, layout = 'fruchtermanreingold', arrow.gap = 0.01)
+munet_fr <- ggnetwork(munet, layout = 'fruchtermanreingold', arrow.gap = 0.01)
+```
+
+```{r}
+ggplot(data = abnet_fr, aes(x, y, xend=xend, yend=yend))+
+  geom_edges(color = 'grey75', 
+             curvature = 0.1,
+             arrow = arrow(length = unit(2, 'pt'), type = 'closed'))+
+  geom_nodes(aes(color = Tribe, size = degree))+
+  theme_blank()+
+  scale_size_continuous(range = c(0,4))+
+  guides(size = F)+
+  labs(title = 'Social network of Abalang (Ethnically-homogeneous village)')
+```
+
+```{r}
+ggplot(data = munet_fr, aes(x, y, xend=xend, yend=yend))+
+  geom_edges(color = 'grey75', 
+             curvature = 0.1,
+             arrow = arrow(length = unit(2, 'pt'), type = 'closed'))+
+  geom_nodes(aes(color = Tribe, size = degree))+
+  theme_blank()+
+  scale_size_continuous(range = c(0,4))+
+  guides(size = F)+
+  labs(title = 'Social network of Mugana (Ethnically-heterogeneous village)')
+```
+
+## Visualizations of vertex attribute distributions
+
+```{r}
+attab$Village <- 'Abalang'
+attmu$Village <- 'Mugana'
+
+attall <- rbind(attab, attmu)
+
+ggplot(data = attall, aes(x = Tribe, group = Village))+
+  geom_bar(stat = 'count', position = 'dodge', aes(fill = Village))+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(legend.position="bottom")+
+  labs(title = 'Distribution of Ethnic Identity in Abalang and Mugana Villages',
+       x = NULL,
+       y = NULL)
+```
+
+```{r}
+ggplot(data = attall, aes(x = Hear))+
+  geom_bar(stat = 'count')+
+  facet_grid(cols = vars(Village))+
+  labs(title = 'Distribution of information diffusion',
+       x = 'Respondent received seeded information',
+       y = NULL)
+```
+
+```{r}
+ggplot(data = attall, aes(x = Attend))+
+  geom_bar(stat = 'count')+
+  facet_grid(cols = vars(Village))+
+  labs(title = 'Distribution of respondents acting upon diffused information',
+       x = 'Respondent acted upon seeded information',
+       y = NULL)
+```
+
+## Reproduction of original results
+
+```{r, results=F}
+#######################################
+# Building networks from raw data
+#######################################
+
+library(igraph)
+library(stargazer)
+library(xtable)
+
+data <- read.csv("EthnicNetworksData.csv", stringsAsFactors=FALSE)
+
+## Convert all name variables (entered as anonymized numbers) to character strings
+
+namevars <- c("Ego","Time1","Time2","Time3","Time4","Time5", "Phone1","Phone2","Phone3","Phone4","Phone5", "Pol1","Pol2","Pol3","Pol4","Pol5", "Relig1","Relig2","Relig3","Relig4","Relig5", "Meal1","Meal2","Meal3","Meal4","Meal5", "Visit1","Visit2","Visit3","Visit4","Visit5", "Secret1","Secret2","Secret3","Secret4","Secret5",  "GossipNameCl")
+
+for (i in 1:length(namevars)){
+	data[,namevars[i]] <- as.character(data[,namevars[i]])
+}
+
+###################################
+###################################
+## Section 1
+###################################
+###################################
+
+## 1) Construct closed (for analyses) and open (for robustness) networks for each of seven attributes
+## (time, meal, visit, phone, politics, religion, secret) for both villages (Abalang, Mugana)
+## and a union of the seven for each.
+
+
+######################################
+## Functions to create networks:
+
+
+## Produces a dataset with unique links and a weight that records the number of links:
+
+elunique <- function(el, directed = TRUE){ #directed just governs the weights, doesn't clean the duplicated undrected links.  Igraph takes care later.
+	counts <- matrix(NA, nrow = nrow(el), ncol = nrow(el))
+	if(directed == TRUE){
+		for(i in 1:nrow(el)){
+			for(j in 1:nrow(el)){
+				counts[i,j] <- sum(el[i,] == el[j,]) #0,1 or 2
+				}
+			}
+		}
+		
+	if(directed == FALSE){
+		for(i in 1:nrow(el)){
+			for(j in 1:nrow(el)){
+				counts[i,j] <- max( sum( el[i,] == el[j,]), sum(el[i,] == el[j,c(2,1)]) ) 
+				}
+			}
+		}
+	
+	
+	weights <- rep(NA, nrow(el))
+	for(i in 1:nrow(el)){
+		weights[i] <- sum(counts[i,] == 2)
+		}
+	uniquerows <- 1- duplicated(el) 
+	out <- list("el" = el[which(uniquerows==1),], "weights" = weights[which(uniquerows==1)])
+	return(out)
+	}
+
+# Make a closed version of an edgelist.  Close by left column + egolist:	
+#Assumes that all in left col are to be kept, catches cases where some alters should be 
+#kept too despite not showing up on the left (i.e. if alter was surveyed but offered outdeg 0)
+#i.e. uses ego list to determine whether to keep alter, if keep, keep link.
+
+closethenwglobal <- function(el, ego){ #edgelist with egos on left, vector of egos
+	keep <- c()
+	for (i in 1: nrow(el)){
+		if(sum(el[i,2] == na.omit(ego))>0){
+			keep <- c(keep, i)
+			}
+		}
+	out <- el[keep,]
+	return(out)
+	}
+
+#testel <- matrix(c(1,2,3,2,3,4, 4,3, 2,1), byrow = F, ncol = 2)
+#closethenwglobal(testel, c(1,2,4)) #works, even though this is an unusual case
+
+			
+## Make edgelists from post-event data.  Function specific to this particular dataset names and structure.
+
+genelspost <- function(data){ 
+
+
+	eltimeab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Time1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Time2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Time3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Time4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Time5")])
+	  )
+	eltimeab <- na.omit(eltimeab)
+
+	elphoneab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Phone1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Phone2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Phone3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Phone4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Phone5")])
+	  )
+	elphoneab <- na.omit(elphoneab)
+	
+	elpolab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Pol1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Pol2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Pol3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Pol4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Pol5")])
+	  )
+	elpolab <- na.omit(elpolab)
+	
+	elreligab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Relig1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Relig2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Relig3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Relig4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Relig5")])
+	  )
+	elreligab <- na.omit(elreligab)
+	
+	elmealab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Meal1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Meal2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Meal3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Meal4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Meal5")])
+	  )
+	elmealab <- na.omit(elmealab)
+	
+	elvisitab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Visit1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Visit2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Visit3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Visit4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Visit5")])
+	  )
+	elvisitab <- na.omit(elvisitab)
+	
+	elsecretab <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Secret1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Secret2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Secret3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Secret4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "ABALANG"), c("Ego", "Secret5")])
+	  )
+	elsecretab <- na.omit(elsecretab)
+	
+	elunionab <- rbind(eltimeab, elphoneab, elpolab, elreligab, elmealab, elvisitab, elsecretab)
+		
+	print("Abalang Done")
+	
+	## And Mugana
+	
+	eltimemu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Time1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Time2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Time3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Time4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Time5")])
+	  )
+	eltimemu <- na.omit(eltimemu)
+	
+	elphonemu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Phone1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Phone2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Phone3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Phone4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Phone5")])
+	  )
+	elphonemu <- na.omit(elphonemu)
+	
+	elpolmu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Pol1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Pol2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Pol3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Pol4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Pol5")])
+	  )
+	elpolmu <- na.omit(elpolmu)
+	
+	elreligmu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Relig1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Relig2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Relig3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Relig4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Relig5")])
+	  )
+	elreligmu <- na.omit(elreligmu)
+	
+	elmealmu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Meal1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Meal2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Meal3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Meal4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Meal5")])
+	  )
+	elmealmu <- na.omit(elmealmu)
+	
+	elvisitmu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Visit1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Visit2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Visit3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Visit4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Visit5")])
+	  )
+	elvisitmu <- na.omit(elvisitmu)
+	
+	elsecretmu <- rbind( as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Secret1")]), 
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Secret2")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Secret3")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Secret4")]),
+	  as.matrix(data[(data$EventCode != 1 & data$CoarseVlg == "MUGANA"), c("Ego", "Secret5")])
+	  )
+	elsecretmu <- na.omit(elsecretmu)
+	
+	elunionmu <- rbind(eltimemu, elphonemu, elpolmu, elreligmu, elmealmu, elvisitmu, elsecretmu)
+	
+		out <- list("eltimeab"=eltimeab, "elphoneab"=elphoneab, "elpolab"=elpolab, "elreligab"=elreligab, "elvisitab"=elvisitab, "elmealab"=elmealab, "elsecretab"=elsecretab, "elunionab"=elunionab, "eltimemu"=eltimemu, "elphonemu"=elphonemu, "elpolmu"=elpolmu, "elreligmu"=elreligmu, "elvisitmu"=elvisitmu, "elmealmu"=elmealmu, "elsecretmu"=elsecretmu,  "elunionmu"=elunionmu)
+	
+	return(out)
+	
+	}
+	
+## Remove duplicates from el and convert it to a network object in igraph
+	
+gennws <- function(ellist){ #takes list of edgelists from genels
+	
+	eltimeab <- elunique(ellist$eltimeab)
+	elphoneab <- elunique(ellist$elphoneab)
+	elpolab <- elunique(ellist$elpolab)
+	elreligab <- elunique(ellist$elreligab)
+	elmealab <- elunique(ellist$elmealab)
+	elvisitab <- elunique(ellist$elvisitab)
+	elsecretab <- elunique(ellist$elsecretab)
+	elunionab <- elunique(ellist$elunionab)
+		
+	print("Done with Abalang")
+	
+	eltimemu <- elunique(ellist$eltimemu)
+	elphonemu <- elunique(ellist$elphonemu)
+	elpolmu <- elunique(ellist$elpolmu)
+	elreligmu <- elunique(ellist$elreligmu)
+	elmealmu <- elunique(ellist$elmealmu)
+	elvisitmu <- elunique(ellist$elvisitmu)
+	elsecretmu <- elunique(ellist$elsecretmu)
+	elunionmu <- elunique(ellist$elunionmu)
+	
+	print("Making the networks now")
+	## Now make the networks
+	
+	nwtimeab <- graph.edgelist(eltimeab$el, directed = TRUE)
+	nwphoneab <- graph.edgelist(elphoneab$el, directed = TRUE)
+	nwpolab <- graph.edgelist(elpolab$el, directed = TRUE)
+	nwreligab <- graph.edgelist(elreligab$el, directed = TRUE)
+	nwmealab <- graph.edgelist(elmealab$el, directed = TRUE)
+	nwvisitab <- graph.edgelist(elvisitab$el, directed = TRUE)
+	nwsecretab <- graph.edgelist(elsecretab$el, directed = TRUE)
+	nwunionab <- graph.edgelist(elunionab$el, directed = TRUE)
+		
+	nwtimemu <- graph.edgelist(eltimemu$el, directed = TRUE)
+	nwphonemu <- graph.edgelist(elphonemu$el, directed = TRUE)
+	nwpolmu <- graph.edgelist(elpolmu$el, directed = TRUE)
+	nwreligmu <- graph.edgelist(elreligmu$el, directed = TRUE)
+	nwmealmu <- graph.edgelist(elmealmu$el, directed = TRUE)
+	nwvisitmu <- graph.edgelist(elvisitmu$el, directed = TRUE)
+	nwsecretmu <- graph.edgelist(elsecretmu$el, directed = TRUE)
+	nwunionmu <- graph.edgelist(elunionmu$el, directed = TRUE)
+		
+	out <- list("nwtimeab"=nwtimeab, "nwphoneab"=nwphoneab, "nwpolab"=nwpolab, "nwreligab"=nwreligab, "nwmealab"=nwmealab, "nwvisitab"=nwvisitab, "nwsecretab"=nwsecretab, "nwunionab"=nwunionab, "nwtimemu"=nwtimemu, "nwphonemu"=nwphonemu, "nwpolmu"=nwpolmu, "nwreligmu"=nwreligmu, "nwmealmu"=nwmealmu, "nwvisitmu"=nwvisitmu, "nwsecretmu"=nwsecretmu, "nwunionmu"=nwunionmu) 
+	
+	return(out)
+	
+	} 
+	
+#################################################################
+#################################################################
+## Use the Above functions to make the networks for analyses
+
+## Open and closed + unique networks for post for each village
+
+n2els <- genelspost(data)
+n2nws <- gennws(n2els)
+
+## Name the (open and unique) networks separately
+
+autime <- n2nws$nwtimeab
+auphone <- n2nws$nwphoneab
+aupol <- n2nws$nwpolab
+aurelig <- n2nws$nwreligab
+auvisit <- n2nws$nwvisitab
+aumeal <- n2nws$nwmealab
+ausecret <- n2nws$nwsecretab
+
+auunion <- n2nws$nwunionab
+
+mutime <- n2nws$nwtimemu
+muphone <- n2nws$nwphonemu
+mupol <- n2nws$nwpolmu
+murelig <- n2nws$nwreligmu
+muvisit <- n2nws$nwvisitmu
+mumeal <- n2nws$nwmealmu
+musecret <- n2nws$nwsecretmu
+
+muunion <- n2nws$nwunionmu
+
+## Indices to identify Abalang and Mugana post-event respondents
+abpost <- which(data$EventCode != 1 & data$CoarseVlg == "ABALANG")
+mupost <- which(data$EventCode != 1 & data$CoarseVlg == "MUGANA")
+
+
+## CLOSED networks
+actimeel <- elunique(n2els$eltimeab, directed = TRUE)
+actime <- closethenwglobal(actimeel$el, ego = data$Ego[abpost])
+actime <- graph.edgelist(actime, directed = TRUE)
+acphoneel <- elunique(n2els$elphoneab, directed = TRUE)
+acphone <- closethenwglobal(acphoneel$el, ego = data$Ego[abpost])
+acphone <- graph.edgelist(acphone, directed = TRUE)
+acpolel <- elunique(n2els$elpolab, directed = TRUE)
+acpol <- closethenwglobal(acpolel$el, ego = data$Ego[abpost])
+acpol <- graph.edgelist(acpol, directed = TRUE)
+acreligel <- elunique(n2els$elreligab, directed = TRUE)
+acrelig <- closethenwglobal(acreligel$el, ego = data$Ego[abpost])
+acrelig <- graph.edgelist(acrelig, directed = TRUE)
+acvisitel <- elunique(n2els$elvisitab, directed = TRUE)
+acvisit <- closethenwglobal(acvisitel$el, ego = data$Ego[abpost])
+acvisit <- graph.edgelist(acvisit, directed = TRUE)
+acmealel <- elunique(n2els$elmealab, directed = TRUE)
+acmeal <- closethenwglobal(acmealel$el, ego = data$Ego[abpost])
+acmeal <- graph.edgelist(acmeal, directed = TRUE)
+acsecretel <- elunique(n2els$elsecretab, directed = TRUE)
+acsecret <- closethenwglobal(acsecretel$el, ego = data$Ego[abpost])
+acsecret <- graph.edgelist(acsecret, directed = TRUE)
+
+acel <- elunique(n2els$elunionab, directed = TRUE)
+ac <- closethenwglobal(acel$el, ego = data$Ego[abpost])
+ac <- graph.edgelist(ac, directed = TRUE)
+
+mctimeel <- elunique(n2els$eltimemu, directed = TRUE)
+mctime <- closethenwglobal(mctimeel$el, ego = data$Ego[mupost])
+mctime <- graph.edgelist(mctime, directed = TRUE)
+mcphoneel <- elunique(n2els$elphonemu, directed = TRUE)
+mcphone <- closethenwglobal(mcphoneel$el, ego = data$Ego[mupost])
+mcphone <- graph.edgelist(mcphone, directed = TRUE)
+mcpolel <- elunique(n2els$elpolmu, directed = TRUE)
+mcpol <- closethenwglobal(mcpolel$el, ego = data$Ego[mupost])
+mcpol <- graph.edgelist(mcpol, directed = TRUE)
+mcreligel <- elunique(n2els$elreligmu, directed = TRUE)
+mcrelig <- closethenwglobal(mcreligel$el, ego = data$Ego[mupost])
+mcrelig <- graph.edgelist(mcrelig, directed = TRUE)
+mcvisitel <- elunique(n2els$elvisitmu, directed = TRUE)
+mcvisit <- closethenwglobal(mcvisitel$el, ego = data$Ego[mupost])
+mcvisit <- graph.edgelist(mcvisit, directed = TRUE)
+mcmealel <- elunique(n2els$elmealmu, directed = TRUE)
+mcmeal <- closethenwglobal(mcmealel$el, ego = data$Ego[mupost])
+mcmeal <- graph.edgelist(mcmeal, directed = TRUE)
+mcsecretel <- elunique(n2els$elsecretmu, directed = TRUE)
+mcsecret <- closethenwglobal(mcsecretel$el, ego = data$Ego[mupost])
+mcsecret <- graph.edgelist(mcsecret, directed = TRUE)
+
+mcel <- elunique(n2els$elunionmu, directed = TRUE)
+mc <- closethenwglobal(mcel$el, ego = data$Ego[mupost])
+mc <- graph.edgelist(mc, directed = TRUE)
+
+
+## First-order stats of union networks
+vcount(ac) # 216
+vcount(mc) # 234
+ecount(ac) # 660
+ecount(mc) # 965
+graph.density(ac) #.0142
+graph.density(mc) #.0177
+
+
+## Add node attributes to the iGraph network objects
+
+nlistab <- list("time" = actime, "phone"=acphone, "pol" = acpol, "relig"=acrelig, "visit"=acvisit, "meal"=acmeal, "secret"=acsecret, "union"=ac)
+
+nlistmu <- list("time"=mctime, "phone"=mcphone, "pol"=mcpol, "relig"=mcrelig, "visit"=mcvisit, "meal"=mcmeal, "secret"=mcsecret, "union"=mc)
+
+
+addchar <- function(nw, data, att){ #funciton of network, dataset, attrib name from data
+	newatt <- c()
+	for(i in 1:vcount(nw)){
+		ind <- min(which(data$Ego == V(nw)$name[i]))
+		if(length(ind)==0){
+			newatt[i] <- NA
+			}else{
+		newatt[i] <- data[ind,att]
+			}
+		}
+	return(newatt)
+	}
+	
+abseeds <- which(data$IsSeed[abpost]==1)
+abseednames <- data$Ego[abpost][abseeds]
+
+museeds <- which(data$IsSeed[mupost]==1)
+museednames <- data$Ego[mupost][museeds]
+
+	for(j in 1:length(nlistab)){
+		V(nlistab[[j]])$tribe <- addchar(nlistab[[j]], data[abpost,], "Tribe")
+		V(nlistab[[j]])$clan <- addchar(nlistab[[j]], data[abpost,], "CoarseClan")
+		V(nlistab[[j]])$lang <- addchar(nlistab[[j]], data[abpost,], "CoarseLangFam")
+		V(nlistab[[j]])$clanspouse <- addchar(nlistab[[j]], data[abpost,], "CoarseSpouseClan")
+		V(nlistab[[j]])$hearevent <- addchar(nlistab[[j]], data[abpost,], "Hear")
+		V(nlistab[[j]])$attend <- addchar(nlistab[[j]], data[abpost,], "Attend")
+		V(nlistab[[j]])$region <- addchar(nlistab[[j]],data[abpost,], "Region")
+		V(nlistab[[j]])$seed <- 0
+		vind <- c()
+		for(i in 1:length(abseednames)){
+			if( length(which(V(nlistab[[j]])$name == abseednames[i])) == 0){
+				vind[i] <- NA
+			}else{
+				vind[i] <- which(V(nlistab[[j]])$name == abseednames[i])
+			}
+		}
+		if(length(vind) > 0){
+			V(nlistab[[j]])$seed[vind] <- 1
+		}
+		
+
+	}
+	
+
+	
+	for(j in 1:length(nlistmu)){
+		V(nlistmu[[j]])$tribe <- addchar(nlistmu[[j]], data[mupost,], "Tribe")
+		V(nlistmu[[j]])$clan <- addchar(nlistmu[[j]], data[mupost,], "CoarseClan")
+		V(nlistmu[[j]])$lang <- addchar(nlistmu[[j]], data[mupost,], "CoarseLangFam")
+		V(nlistmu[[j]])$clanspouse <- addchar(nlistmu[[j]], data[mupost,], "CoarseSpouseClan")
+		V(nlistmu[[j]])$hearevent <- addchar(nlistmu[[j]], data[mupost,], "Hear")
+		V(nlistmu[[j]])$attend <- addchar(nlistmu[[j]], data[mupost,], "Attend")
+		V(nlistmu[[j]])$region <- addchar(nlistmu[[j]], data[mupost,], "Region")
+		V(nlistmu[[j]])$seed <- 0
+		vind <- c()
+		for(i in 1:length(museednames)){
+			if( length(which(V(nlistmu[[j]])$name == museednames[i])) == 0){
+				vind[i] <- NA
+			}else{
+				vind[i] <- which(V(nlistmu[[j]])$name == museednames[i])
+			}
+		}
+		if(length(vind)>0){
+			V(nlistmu[[j]])$seed[vind] <- 1
+		}
+
+	}
+	
+## Pull the networks out of the list and rename them.  They now contain all node attributes.	
+
+actime <- nlistab$time
+acphone <- nlistab$phone
+acpol <- nlistab$pol
+acrelig <- nlistab$relig
+acvisit <- nlistab$visit
+acmeal <- nlistab$meal
+acsecret <- nlistab$secret
+ac <- nlistab$union
+
+mctime <- nlistmu$time
+mcphone <- nlistmu$phone
+mcpol <- nlistmu$pol
+mcrelig <- nlistmu$relig
+mcvisit <- nlistmu$visit
+mcmeal <- nlistmu$meal
+mcsecret <- nlistmu$secret
+mc <- nlistmu$union
+
+
+## These are the main networks for analyses.  They are closed networks for both villages from post-event respondents.
+
+#######
+## Tidy the workspace
+
+rm(nlistab,nlistmu,addchar,vind, i, j, acmealel, acpolel, acsecretel, acel, actimeel, acvisitel, acreligel, acphoneel, mcmealel, mcpolel, mcsecretel, mcel, mctimeel, mcvisitel, mcreligel, mcphoneel,abseednames, museednames, closethenwglobal, elunique, genelspost, gennws, n2els, n2nws)
+
+
+
+```
+
+### Main Article Tables and Figures
+
+```{r, results = F}
+###############################
+###############################
+## Section 2: Descriptive stats
+###############################
+###############################
+
+## Number of attenders in data
+sum(data$Attend == "Y", na.rm=T) #145
+
+## Number of hearers in data
+sum(data$Hear == "Y", na.rm=T) #279
+
+########## From Table 1:
+
+## Rest of descriptive stats for paper Table 1.  abpost=Abalang, mupost=Mugana.
+
+mean(data$Age[abpost], na.rm=T) #39
+mean(data$Age[mupost], na.rm=T) #37
+
+sum(data$Gender[abpost]=="F", na.rm=T) / length(na.omit(data$Gender[abpost])) #70
+sum(data$Gender[mupost]=="F", na.rm=T) / length(na.omit(data$Gender[mupost])) #66
+
+## Proportion unemployed and not looking:
+(sum(data$JobType[abpost]==1, na.rm=T) )/ length(na.omit(data$JobType[abpost]))  #.39 unemployed and not looking
+(sum(data$JobType[mupost]==1, na.rm=T)  )/ length(na.omit(data$JobType[mupost]))  #.43 unemployed and not looking
+
+## Unemployed and looking:
+(sum(data$JobType[abpost]==2, na.rm=T) )/ length(na.omit(data$JobType[abpost]))  #.02 unemployed and not looking
+(sum(data$JobType[mupost]==2, na.rm=T)  )/ length(na.omit(data$JobType[mupost]))  #.05 unemployed and not looking
+
+## Employed part-time:
+(sum(data$JobType[abpost]==3, na.rm=T) )/ length(na.omit(data$JobType[abpost]))  #.46 employed part-time
+(sum(data$JobType[mupost]==3, na.rm=T)  )/ length(na.omit(data$JobType[mupost]))  #.42 employed part-time
+
+## Employed full-time:
+(sum(data$JobType[abpost]==4, na.rm=T) )/ length(na.omit(data$JobType[abpost]))  #.12 employed full-time
+(sum(data$JobType[mupost]==4, na.rm=T)  )/ length(na.omit(data$JobType[mupost]))  #.10 employed full-time
+
+## Education status
+mean(data$Educ[abpost], na.rm=T) #3.34
+mean(data$Educ[mupost], na.rm=T) #3.33
+
+## Low wall material score:
+(sum(data$WallMat[abpost]==1 | data$WallMat[abpost]==2, na.rm=T) )/ length(na.omit(data$WallMat[abpost])) #.005
+(sum(data$WallMat[mupost]==1 | data$WallMat[mupost]==2, na.rm=T) )/ length(na.omit(data$WallMat[mupost])) #0
+
+## Mid wall material score:
+(sum(data$WallMat[abpost]==3 | data$WallMat[abpost]==4, na.rm=T) )/ length(na.omit(data$WallMat[abpost])) #.89
+(sum(data$WallMat[mupost]==3 | data$WallMat[mupost]==4, na.rm=T) )/ length(na.omit(data$WallMat[mupost])) #.76
+
+## High wall material score:
+(sum(data$WallMat[abpost]==5 | data$WallMat[abpost]==6, na.rm=T) )/ length(na.omit(data$WallMat[abpost])) #.11
+(sum(data$WallMat[mupost]==5 | data$WallMat[mupost]==6, na.rm=T) )/ length(na.omit(data$WallMat[mupost])) #.24
+
+## Phone ownership:
+sum(data$OwnPhone[abpost] == "Y", na.rm=T) / length(na.omit(data$OwnPhone[abpost])) #.24
+sum(data$OwnPhone[mupost] == "Y", na.rm=T) / length(na.omit(data$OwnPhone[mupost])) #.27
+
+## Proportion in modal clan:
+sort(table(data$CoarseClan[abpost]), decreasing=TRUE)[1] / length(na.omit(data$CoarseClan[abpost])) #.39
+sort(table(data$CoarseClan[mupost]), decreasing=TRUE)[1] / length(na.omit(data$CoarseClan[mupost]))  #.35
+
+## Proportion Catholic:
+sum(data$Relig[abpost] == 1, na.rm=T) / length(na.omit(data$Relig[abpost])) #.63
+sum(data$Relig[mupost] == 1, na.rm=T) / length(na.omit(data$Relig[mupost])) #.86
+
+## Frequency of Worship
+mean(data$Worship[abpost], na.rm=T) #3.8
+mean(data$Worship[mupost], na.rm=T) #4.0
+
+## Lived in village since 80s
+In80s <- as.numeric(ifelse(data$In80s=="N", 0, 1))
+#Must be old enough to have been eligible to live there in 80s.  look at age 33 and up
+aboldenough <- which(data$Age[abpost]>=33) 
+muoldenough <- which(data$Age[mupost]>=33) 
+
+sum(In80s[abpost][aboldenough] == 1, na.rm=T)/ length(na.omit(In80s[abpost][aboldenough])) #.79
+sum(In80s[mupost][muoldenough] == 1, na.rm=T)/ length(na.omit(In80s[mupost][muoldenough])) #.77
+
+## Proportion Ateso-speaking
+sum(data$CoarseLangFam[abpost] == "ATESO", na.rm=T) / length(na.omit(data$CoarseLangFam[abpost])) #.97
+sum(data$CoarseLangFam[mupost] == "ATESO", na.rm=T) / length(na.omit(data$CoarseLangFam[mupost])) # .66
+
+## Proportion Kumam-speaking
+sum(data$CoarseLangFam[abpost] == "KUMAM", na.rm=T) / length(na.omit(data$CoarseLangFam[abpost])) #.004
+sum(data$CoarseLangFam[mupost] == "KUMAM", na.rm=T) / length(na.omit(data$CoarseLangFam[mupost])) # .33
+
+## Proportion Iteso (note: coded "Ateso" but the tribe is in fact "Iteso")
+sum(data$Tribe[abpost] == "ATESO", na.rm=T) / length(na.omit(data$Tribe[abpost])) #.96
+sum(data$Tribe[mupost] == "ATESO", na.rm=T) / length(na.omit(data$Tribe[mupost])) #.64
+
+## Proportion Kumam
+sum(data$Tribe[abpost] == "KUMAM", na.rm=T) / length(na.omit(data$Tribe[abpost])) #.009
+sum(data$Tribe[mupost] == "KUMAM", na.rm=T) / length(na.omit(data$Tribe[mupost])) #.343
+
+## ELF for each village
+cats <- unique(na.omit(data$Tribe[abpost]))
+atvec <- data$Tribe[abpost]
+cumsquaredsum <- 0
+	for(i in 1:length(cats)){
+		probincat <- sum(cats[i] == atvec, na.rm = TRUE) / length(na.omit(atvec))
+		cumsquaredsum <- cumsquaredsum + probincat^2
+		}
+1-cumsquaredsum ## .08 Abalang ELF
+
+cats <- unique(na.omit(data$Tribe[mupost]))
+atvec <- data$Tribe[mupost]
+cumsquaredsum <- 0
+	for(i in 1:length(cats)){
+		probincat <- sum(cats[i] == atvec, na.rm = TRUE) / length(na.omit(atvec))
+		cumsquaredsum <- cumsquaredsum + probincat^2
+		}
+1-cumsquaredsum ## .48 Mugana ELF
+
+## Fragmentation (1-largest tribe)
+1-(sum(data$Tribe[abpost] == "ATESO", na.rm=T) / length(na.omit(data$Tribe[abpost]))) #.04
+1-(sum(data$Tribe[mupost] == "ATESO", na.rm=T) / length(na.omit(data$Tribe[mupost]))) #.36
+
+
+########## From p. 11
+sum(data$Attend == "Y", na.rm=T) #145 total attenders
+## Villages in attendance at the event.  Note:"UNKNOWN" are from a village in Aloet Parish.
+table(data$CoarseVlg[data$Attend == "Y"])
+
+## Travel time to event, in minutes
+min(na.omit(data$MinsTrav)) #2
+mean(data$MinsTrav, na.rm=T) #51
+max(na.omit(data$MinsTrav)) #180
+
+## Sample size of post-event survey
+length(na.omit(data$Ego[abpost])) #226 respondents from Abalang in post-event
+length(na.omit(data$Ego[mupost])) #237 respondents from Mugana in post-event
+
+## Proportion of respondents hearing the news:
+length(which(data$Hear[abpost]=="Y")) / length(na.omit(data$Ego[abpost])) #62%
+length(which(data$Hear[mupost]=="Y")) / length(na.omit(data$Ego[mupost])) #9%
+
+## Proportion of called people who are outside the village
+
+phoneout <- c(data$Phone1Vlg[abpost], data$Phone2Vlg[abpost], data$Phone3Vlg[abpost], data$Phone4Vlg[abpost], data$Phone5Vlg[abpost])
+sum(phoneout == "N", na.rm=T)/ sum(data$PhoneSum[abpost], na.rm=T)  #72% of calls made to people outside village
+
+phoneout <- c(data$Phone1Vlg[mupost], data$Phone2Vlg[mupost], data$Phone3Vlg[mupost], data$Phone4Vlg[mupost], data$Phone5Vlg[mupost])
+sum(phoneout == "N", na.rm=T)/ sum(data$PhoneSum[mupost], na.rm=T)  #65% of calls made to people outside village
+rm(phoneout)
+
+
+```
+
+#### Main Paper Table 2
+
+```{r}
+########## Main Article Table 2
+
+## Basic network measures for each village
+
+nwmeasures <- function(nw){
+	vc <- vcount(nw)
+	ec <- ecount(nw)
+	density <- graph.density(nw)
+	mdeg <- mean(degree(nw, v = V(nw), mode = "all"))
+	moutdeg <- mean(degree(nw, v = V(nw), mode = "out"))
+	trans <- transitivity(nw, type = "global")
+	rec <- reciprocity(nw, mode = "default")
+	apl <- average.path.length(nw, directed=FALSE, unconnected=TRUE)
+	apld <- average.path.length(nw, directed = TRUE, unconnected=TRUE)
+	diam <- diameter(nw, directed = FALSE, unconnected = TRUE)
+	con <- is.connected(nw)
+	cl <- no.clusters(nw, mode="weak")
+	
+	out <- list("nodes"=vc, "edges"=ec, "density"=density, "meandeg"=mdeg, "meanoutdeg" = moutdeg, "transitivity"=trans, "proprecip"=rec, "avgplundir"=apl, "avgpldir"=apld, "diameter"=diam, "isconnected"=con, "numcomponents"=cl)
+	
+	return(out)
+	}
+	
+cbind(nwmeasures(ac), nwmeasures(mc))
+              # [,1]       [,2]      
+# nodes         216        234       
+# edges         660        965       
+# density       0.01421189 0.01769928
+# meandeg       6.111111   8.247863  
+# meanoutdeg    3.055556   4.123932  
+# transitivity  0.144347   0.1506849 
+# proprecip     0.2030303  0.2099792 
+# avgplundir    3.455818   3.103892  
+# avgpldir      5.33683    4.530835  
+# diameter      9          7         
+# isconnected   FALSE      FALSE     
+# numcomponents 2          2  
+
+rm(nwmeasures)
+
+## Test difference in density 
+
+## Shrink the larger network by removing nodes and its links at random (by randomly selecting enough nodes so that it will have as few nodes as the smaller network)
+
+trimel <- function(el, keeplist){ #edgelist with egos on left, keeplist of el entries that can stay
+	keep <- c()
+	for (i in 1: nrow(el)){
+		if(sum(el[i,1] == na.omit(keeplist))>0 & sum(el[i,2] == na.omit(keeplist))>0){
+			keep <- c(keep, i)
+			}
+		}
+	out <- el[keep,]
+	return(out)
+	}
+
+
+shrinkdensity <- function(el, compnw, egos, numkeep, nsims){ #edgelist, network to compare it to, the vector of egos, and the number to remove, and the number of simulations
+	egos <- na.omit(unique(egos))
+	densities <- c()
+	nodes <- c()
+	edges <- c()
+	
+	for(i in 1:nsims){
+		tokeep <- sample(egos, numkeep, replace = FALSE) 
+	
+		newel <- trimel(el, tokeep)
+		newnw <- graph.edgelist(newel, directed = TRUE)
+		densities[i] <- graph.density(newnw)
+		nodes[i] <- vcount(newnw) #this may actually change with each i if selection generates isolates that aren't included.  
+		edges[i] <- ecount(newnw)
+		}
+		
+	propmore <- sum(densities > graph.density(compnw)) / nsims
+	mean <- mean(densities)
+	vcounts <- mean(nodes)
+	ecounts <- mean(edges)
+	
+	
+	out <- c("Propmore"=propmore, "MeanDensity"=mean, "Nodes"=vcounts, "Edges"=ecounts)
+	return(out)
+	
+	}
+	
+## Returns proportion of shrunken networks that have a density larger than the density of the 
+## smaller comparison netowrk.
+
+mushrunktoab <- shrinkdensity(get.edgelist(mc), ac, c(get.edgelist(mc)[,1], get.edgelist(mc)[,2]), vcount(ac), nsims = 1000)
+
+mushrunktoab # 1, => p < .001
+## So the proportion of simulated shrunken-muganas that have density larger than abalang is 1-- it would be denser even if it were the same size.
+```
+
+#### Main Paper Table 3
+
+```{r}
+########## Ethnic Networks (Manuscript Table 3)
+
+## Full node count
+
+vcount(ac) #216
+vcount(mc) #234
+
+ecount(ac) #660
+ecount(mc) #965
+
+graph.density(ac) #.014
+graph.density(mc) #.018
+
+## Abalang Iteso node count
+
+muitesoind <- which(data$Tribe[mupost]== "ATESO")
+mukumamind <- which(data$Tribe[mupost] == "KUMAM")
+
+muiteso <- data$Ego[mupost][muitesoind]
+mukumam <- data$Ego[mupost][mukumamind]
+
+## Make edgelists for each ethnic network within Mugana
+muitel <- trimel(get.edgelist(mc), muiteso)
+mukuel <- trimel(get.edgelist(mc), mukumam)
+
+## Make networks from edgelists
+muit <- graph.edgelist(muitel, directed = TRUE)
+muku <- graph.edgelist(mukuel, directed = TRUE)
+
+## Network stats for each ethnic network within Mugana
+vcount(muit) #144
+vcount(muku) #76
+ecount(muit) #423
+ecount(muku) #164
+graph.density(muit) #.021
+graph.density(muku) #.029
+
+
+## Now make the Iteso netowrk within Abalang
+
+abitesoind <- which(data$Tribe[abpost]=="ATESO")
+abiteso <- data$Ego[abpost][abitesoind]
+
+## Make edgelist
+abitel <- trimel(get.edgelist(ac), abiteso)
+
+## Make network
+abit <- graph.edgelist(abitel, directed = TRUE)
+
+vcount(abit) #203
+ecount(abit) #615
+graph.density(abit) #.015
+
+## If the Abalang Iteso network were as small as the Mugana Iteso network, would it be as dense?
+
+shrinkdensity(abitel, muit, abiteso, vcount(muit), 1000)  #0, p < .001, mean adjusted: .016
+## i.e. none of the shrunken abalang networks would have density larger than the mugana iteso network
+
+## And if the Abalng Iteso network were as small as the Mugana Kumam network, would it be as dense?
+shrinkdensity(abitel, muku, abiteso, vcount(muku), 1000) #.005, p = .005, mean adjusted: .022
+## i.e. 5 out of 1000 shrunken abalang networks would have density larger than the mugana Kumam network
+
+## From above, proportion cross-group ties in Mugana is .388
+.388*ecount(mc) #374 ties are cross-group
+
+## Average coethnic total degree Abalang:
+(ecount(abit)/vcount(abit))*2 #6.06
+
+## Average coethnic total degree Mugana:
+2*(ecount(muit) + ecount(muku)) / vcount(mc) #5.02
+
+mean(degree(ac))
+mean(degree(mc))
+
+
+
+########## Total number of names and unique names offered in both villages: 
+
+
+mean(data$TotNames[abpost]) #14.4
+mean(data$TotUNames[abpost]) #10.7
+#10.7/14.4 = .74
+
+mean(data$TotNames[mupost]) #17.4
+mean(data$TotUNames[mupost]) #13.3
+#13.3/17.4 = .76
+
+
+
+########## Total number of people told
+
+told <- as.numeric(data$ToTotal) #warning is fine
+proptold <- told[abpost]/data$TotUNames[abpost]
+
+whichnotzero <- which(data$TotUNames[abpost] > 0)
+mean(proptold[whichnotzero], na.rm=T)  ## In general, told .29 of their unique contacts in Abalang.
+
+.29*6.1 # Implies that in a network with degree 6.1 (like the one used in simulations) should set x to 1.8 (round to 2). 
+
+
+```
+
+#### Main Paper Table 1
+
+```{r, results = 'asis'}
+#############################
+#############################
+########## Section 3: Regression Tables
+#############################
+#############################
+
+
+## First prepare the non-network variables:
+
+regdata <- data
+
+#Transform dependent variables to numeric
+regdata$Hear <- as.numeric(ifelse(data$Hear=="Y", 1, 0))
+regdata$Attend <- as.numeric(ifelse(data$Attend=="Y", 1, 0))
+regdata$Passed <- data$Passed
+
+#Transform independent variables to numeric
+regdata$Gender <- as.numeric(ifelse(data$Gender=="M", 0, 1))
+regdata$Married <- as.numeric(ifelse(data$Married=="N", 0, 1))
+
+
+#Religion
+regdata$Relig[data$Relig==5] <- NA
+regdata$Catholic <- ifelse(regdata$Relig==1, 1, ifelse(!is.na(regdata$Relig), 0, NA))
+regdata$Anglican<- ifelse(data$Relig==2, 1, ifelse(!is.na(regdata$Relig), 0, NA))
+regdata$Muslim <- ifelse(data$Relig==3, 1, ifelse(!is.na(regdata$Relig), 0, NA))
+regdata$Pentacostal <- ifelse(data$Relig==4, 1, ifelse(!is.na(regdata$Relig), 0, NA))
+
+#Employment
+regdata$Unemp <- ifelse(data$JobType==1|data$JobType==2, 1, ifelse(!is.na(data$JobType), 0, NA)) 
+regdata$PartTime <- ifelse(data$JobType==3, 1, ifelse(!is.na(data$JobType), 0, NA))
+regdata$FullTime <- ifelse(data$JobType==4, 1, ifelse(!is.na(data$JobType), 0, NA))
+
+#Education
+regdata$HighEduc <- ifelse(data$Educ==4|data$Educ==5|data$Educ==6|data$Educ==7|data$Educ==8, 1, ifelse(!is.na(data$Educ), 0, NA))
+
+regdata$VisitOth <- data$CoarseVisitOth
+
+regdata$HighWallMat <- ifelse(data$WallMat==4|data$WallMat==5|data$WallMat==6, 1, ifelse(!is.na(data$WallMat), 0, NA))
+
+regdata$Worship <- data$Worship
+
+regdata$ClanWeek <- data$ClanWeek
+regdata$ClanWeek[regdata$ClanWeek == 6] <- NA
+
+regdata$ReligWeek <- data$ReligWeek
+regdata$ReligWeek[regdata$ReligWeek == 6] <- NA
+
+# Ego number 199 dropped due to all missings in reported networks:
+regdata <- regdata[-199,]  # Results not sensitive to dropping this observation
+
+regdata <- subset(regdata, !is.na(Ego))                                   #delete missing Egos
+regdata <- regdata[!duplicated(regdata$Ego), ]
+
+## Here's the degree from the union network, open and unique
+
+abdegree <- degree(auunion)
+
+df1 <- data.frame("DegreeOpen" = abdegree)
+df1$Ego <- rownames(df1)
+rownames(df1) <- NULL
+regdata <- merge(regdata, df1, by = "Ego", all.x = TRUE)
+rm(abdegree)
+rm(df1)
+
+## Now collect the phoodhear measures.  First add religion as attribute to the abalang network
+
+addchar <- function(nw, data, att){ #funciton of network, dataset, attrib name from data
+	newatt <- c()
+	for(i in 1:vcount(nw)){
+		ind <- min(which(data$Ego == V(nw)$name[i]))
+		if(length(ind)==0){
+			newatt[i] <- NA
+			}else{
+		newatt[i] <- data[ind,att]
+			}
+		}
+	return(newatt)
+	}
+	
+relig <- addchar(ac, data, "Relig")
+V(ac)$Religion <- relig
+
+## This function calculates attributes of a node's neighborhood
+ 
+propneighbors <- function(network){
+	
+	holdermat <- matrix(nrow=vcount(network), ncol = 14, data=NA)
+	namemat <- c()
+	
+	for (i in 1:vcount(network)){
+		nei <- neighbors(network, i)
+		size <- length(nei)
+	
+		if(size >= 1){
+			store <- matrix(nrow=size, ncol = 13)
+			
+			for(j in 1:size){
+					store[j,1] <- ifelse(V(network)$hearevent[nei[j]]== "Y", 1, 0)
+					store[j,2] <- ifelse(V(network)$tribe[nei[j]]==V(network)$tribe[i], 1, 0)
+					store[j,3] <- ifelse((V(network)$tribe[nei[j]]==V(network)$tribe[i] & V(network)$hearevent[nei[j]]== "Y"), 1, 0)
+					store[j,4] <- ifelse(V(network)$clan[nei[j]]==V(network)$clan[i], 1, 0)
+					store[j,5] <- ifelse((V(network)$clan[nei[j]]==V(network)$clan[i] & V(network)$hearevent[nei[j]]=="Y"), 1, 0)
+					store[j,6] <- ifelse(((V(network)$clanspouse[nei[j]] == V(network)$clan[i]) | V(network)$clan[nei[j]] == V(network)$clan[i]), 1, 0)
+					store[j,7] <- ifelse( ( ( (V(network)$clanspouse[nei[j]] == V(network)$clan[i]) | (V(network)$clan[nei[j]] == V(network)$clan[i]) ) & V(network)$hearevent[nei[j]]=="Y"), 1, 0)
+					store[j,8] <- ifelse(V(network)$Religion[nei[j]] == V(network)$Religion[i], 1, 0)
+					store[j,9] <- ifelse((V(network)$Religion[nei[j]] == V(network)$Religion[i]) & V(network)$hearevent[nei[j]]=="Y", 1, 0)
+					store[j,10] <- ifelse(V(network)$lang[nei[j]] == V(network)$lang[i], 1, 0)
+					store[j,11] <- ifelse((V(network)$lang[nei[j]] == V(network)$lang[i]) & V(network)$hearevent[nei[j]]=="Y", 1, 0)
+					store[j,12] <- ifelse(V(network)$region[nei[j]]==V(network)$region[i], 1, 0)
+					store[j,13] <- ifelse(V(network)$region[nei[j]]==V(network)$region[i] & V(network)$hearevent[nei[j]]=="Y", 1, 0)
+					}
+			
+			numhear <- sum(store[,1],na.rm=T)
+			phear <- sum(store[,1], na.rm=T)/size
+			ptribe <- sum(store[,2], na.rm=T)/size
+			ptribehear <- sum(store[,3], na.rm=T)/size
+			pclan <- sum(store[,4], na.rm=T)/size
+			pclanhear <- sum(store[,5], na.rm=T)/size
+			punionclan <- sum(store[,6], na.rm=T)/size
+			punionclanhear <- sum(store[,7], na.rm=T)/size
+			prelig <- sum(store[,8], na.rm=T)/size
+			prelighear <- sum(store[,9], na.rm=T)/size
+			plang <- sum(store[,10], na.rm=T)/size
+			planghear <- sum(store[,11], na.rm=T)/size
+			pregion <- sum(store[,12], na.rm=T)/size
+			pregionhear <- sum(store[,13], na.rm=T)/size
+			
+			}
+			
+			namemat[i] <- V(network)$name[i]
+			holdermat[i,] <- c(numhear, phear, ptribe, ptribehear, pclan, pclanhear, punionclan, punionclanhear, prelig, prelighear, plang, planghear, pregion, pregionhear)
+			
+		}
+			
+	
+		nwattributes <- as.data.frame(holdermat)
+		nwattributes <- cbind(namemat, nwattributes)
+		
+		names(nwattributes) <- c("Ego", "NumHoodHear", "PHoodHear", "PHoodTribe", "PHoodTribeHear", "PHoodClan", "PHoodClanHear", "PHoodUnionClan", "PHoodUnionClanHear", "PHoodRelig", "PHoodReligHear", "PHoodLang", "PHoodLangHear", "PHoodRegion", "PHoodRegionHear")
+			
+		return(nwattributes)
+		
+		}
+	
+## Generate these values for all nodes in the Abalang union network	
+hoodattsab <- propneighbors(ac)
+
+## Add these values to the appropriate cells in the dataframe
+rownames(hoodattsab) <- NULL
+hoodattsab <- hoodattsab[!duplicated(hoodattsab$Ego), ]
+regdata <- merge(regdata, hoodattsab, by = "Ego", all.x=TRUE)
+rm(hoodattsab)
+
+## Now collect only Abalang post-event respondents
+
+aballpost <- which(regdata$EventCode != 1 & regdata$CoarseVlg == "ABALANG")
+abdata <- regdata[aballpost,]
+
+## Also create a dataframe that includes only those from Abalang post event who heard
+## (For manuscript table 5 predicting passing the news)
+
+
+abheardind <- which(abdata$Hear == 1)
+abheard <- abdata[abheardind,]
+
+
+
+hear.apost.nw.1 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal,
+                              data = abdata, family = "binomial") 
+                              
+hear.apost.nw.2 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen,
+                              data = abdata, family = "binomial")                         
+
+hear.apost.nw.3 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + PHoodHear,
+                              data = abdata, family = "binomial")
+
+hear.apost.nw.4 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen + PHoodHear,
+                              data = abdata, family = "binomial") 
+                              
+########## Manuscript Table 1 :                             
+
+stargazer(hear.apost.nw.1, hear.apost.nw.2, hear.apost.nw.3, hear.apost.nw.4, type = 'html')
+```
+
+#### Main Paper Table 4
+
+```{r, results = 'asis'}
+########## Adding proportion of neighborhoods that are the same type that heard
+                              
+hear.apost.nw.5 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen + PHoodTribeHear,
+                              data = abdata, family = "binomial")  
+                              
+hear.apost.nw.6 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen + PHoodClanHear,
+                              data = abdata, family = "binomial")                                
+
+hear.apost.nw.7 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen + PHoodUnionClanHear,
+                              data = abdata, family = "binomial")
+
+hear.apost.nw.8 <- glm(Hear ~ Gender + Age + Educ + WallMat + Married + PartTime +
+                              FullTime  + Anglican + Pentacostal + DegreeOpen + PHoodReligHear,
+                              data = abdata, family = "binomial")
+
+########## Manuscript Table 4:
+
+stargazer(hear.apost.nw.2, hear.apost.nw.5, hear.apost.nw.6, hear.apost.nw.7, hear.apost.nw.8, type = 'html')
+```
+
+#### Main Paper Table 5
+
+```{r, results = 'asis'}
+########## Passing news conditional on hearing it                              
+                              
+pass1 <- glm(Passed ~ Gender + Age + WallMat + Married + PartTime +
+							FullTime  + Anglican + Pentacostal +  Educ + VisitOth + ClanWeek + 									ReligWeek , 
+                            data = abheard, family = "binomial") 
+                            
+pass2 <- glm(Passed ~ Gender + Age + WallMat + Married + PartTime +
+							FullTime  + Anglican + Pentacostal +  Educ + VisitOth + ClanWeek + 									ReligWeek + DegreeOpen + PHoodTribe , 
+                            data = abheard, family = "binomial")                             
+
+pass3 <- glm(Passed ~ Gender + Age + WallMat + Married + PartTime +
+							FullTime  + Anglican + Pentacostal +  Educ + VisitOth + ClanWeek + 									ReligWeek + DegreeOpen + PHoodClan, 
+                            data = abheard, family = "binomial")                             
+
+pass4 <- glm(Passed ~ Gender + Age + WallMat + Married + PartTime +
+							FullTime  + Anglican + Pentacostal +  Educ + VisitOth + ClanWeek + 									ReligWeek + DegreeOpen + PHoodUnionClan, 
+                            data = abheard, family = "binomial")
+                            
+pass5 <- glm(Passed ~ Gender + Age + WallMat + Married + PartTime +
+							FullTime  + Anglican + Pentacostal +  Educ + VisitOth + ClanWeek + 									ReligWeek + DegreeOpen + PHoodRelig, 
+                            data = abheard, family = "binomial")                            
+
+########## Manuscript Table 5:
+
+stargazer(pass1, pass2, pass3, pass4, pass5, type = 'html')
+
+##########
+```
