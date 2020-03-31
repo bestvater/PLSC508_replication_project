@@ -60,7 +60,7 @@ set.vertex.attribute(abnet, 'Seed', attab$Seed)
 set.vertex.attribute(abnet, 'Tribe', attab$Tribe)
 
 abnet[elab] <- 1
-set.vertex.attribute(abnet, 'degree', sna::degree(abnet))
+set.vertex.attribute(abnet, 'degree', sna::degree(abnet, cmode = 'indegree'))
 
 # build Mugana network
 n <- nrow(attmu)
@@ -72,7 +72,7 @@ set.vertex.attribute(munet, 'Seed', attmu$Seed)
 set.vertex.attribute(munet, 'Tribe', attmu$Tribe)
 
 munet[elmu] <- 1
-set.vertex.attribute(munet, 'degree', sna::degree(munet))
+set.vertex.attribute(munet, 'degree', sna::degree(munet, cmode = 'indegree'))
 ```
 
 ## Plot of network(s) to be studied
@@ -148,7 +148,101 @@ ggplot(data = attall, aes(x = Attend))+
        y = NULL)
 ```
 
-## Reproduction of original results
+# Project Stage 3:
+
+Larson & Lewis' thesis in their 2017 article is that information is disseminated less effectively in an ethnically-heterogeneous social network because even small differences in trust between groups will discourage inter-group communication and interrupt the flow. Empirically, this is demonstrated in a mached-village field experiment conducted in rural Uganda. Information about an upcoming event was seeded to a couple residents of each village, and then a few weeks later, researchers revisited the villages and took a census, asking residents to report their social ties, and also whether they had heard about/attended the event. Although the network in Mugana, the ethnically-heterogeneous village, was denser than the network in Abalang, the ethnically-homogeneous network, residents in Abalang were much more likely to have heard about the event. 
+
+While these results are convincing, Larson & Lewis' analysis prompts an unadressed question: what about the ethnically-heterogeneous social network is preventing diffusion? What mechanisms are driving the disruption of information flows? Two scenarios seem plausible. In the first, villagers simply have a preference for social ties with co-ethnics. If these networks are characterized by preferential attachment by ethnicity, then we would expect the ethnically-heterogeneous village to be highly clustered, contributing to the interruption of information diffusion. This can be formally stated as:
+
+**H1: Ethnically-heterogenous villages are characterized by preferential attachment by ethnicity.**
+
+In the second scenario, villagers are equally likely to create social ties with other villagers of other ethnicities, but do not treat outgroup ties as equivalent to ties with coethnics. Put another way:
+
+**H2: Coethnic ties are stronger than outgroup ties.**
+
+A problem is presented here by the fact that the network data collected by Larson & Lewis are unweighted and do not allow H2 to be directly tested on observed data. However, we can get pretty far in adjudicating between the two scenarios by focusing on H1. If H1 is supported, we can take this as evidence that coethnic preferential attachment is driving the disruption of information diffusion in the ethnically-heterogeneous network. If H1 is not supported, however, it suggests that the network data as collected do not fully capture the nuances of social relationships in these villages, an idea which can then be further explored through simulation. In either case, prior to formal hypothesis testing it can be useful to explore the structure and dependencies of these networks descriptively to see if any structural patterns are suggestive of one explanation over the other.
+
+## Comparing Centrality Distributions
+
+We begin by comparing the degree distributions of each network, as shown below:
+
+```{r}
+set.vertex.attribute(abnet, 'betweenness', sna::betweenness(abnet))
+set.vertex.attribute(munet, 'betweenness', sna::betweenness(munet))
+set.vertex.attribute(abnet, 'eigencent', sna::evcent(abnet))
+set.vertex.attribute(munet, 'eigencent', sna::evcent(munet))
+```
+
+```{r}
+plot_df <- as.data.frame(cbind('Abalang', get.vertex.attribute(abnet, 'degree')))
+plot_df <- rbind(plot_df, cbind('Mugana', get.vertex.attribute(munet, 'degree')))
+names(plot_df) <- c('network', 'degree')
+plot_df$degree <- as.numeric(plot_df$degree)
+
+ggplot(data = plot_df, aes(x = degree, group = network, fill = network))+
+  geom_density(kernel = 'gaussian', alpha = 0.5)+
+  labs(x = 'In-degree Centrality', fill = 'Village', title = 'Comparing degree distributions in Abalang and Mugana networks')
+```
+
+This figure demonstrates that both the Abalang and Mugana network appear to have relatively similar degree distributions. Both distributions are bimodal, with one peak around 10 incoming connections, and another around 0-1. Both networks appear to be characterized by a relatively well-connected core, with a smaller periphery of relatively isolated members. Notably, the Abalang network appears to have more isolates than the Mugana network, a fact that could be responsible for the marginally-higher density that Larson & Lewis note regarding the Mugana network. 
+
+```{r}
+plot_df <- as.data.frame(cbind('Abalang', get.vertex.attribute(abnet, 'betweenness')))
+plot_df <- rbind(plot_df, cbind('Mugana', get.vertex.attribute(munet, 'betweenness')))
+names(plot_df) <- c('network', 'betweenness')
+plot_df$betweenness <- as.numeric(plot_df$betweenness)
+
+ggplot(data = plot_df, aes(x = betweenness, group = network, fill = network))+
+  geom_density(kernel = 'gaussian', alpha = 0.5)+
+  labs(x = 'Betweenness Centrality', fill = 'Village', title = 'Comparing betweenness distributions in Abalang and Mugana networks')
+```
+
+While the degree distributions of the Abalang and Mugana networks are similar, a comparison of their betweenness centrality distributions yields a dramatically different pattern. The Mugana network exhibits considerably higher levels of betweenness than the Abalang network does, suggesting that this network is more highly clustered, with fewer redundant paths between clusters. This is a pattern we might expect to observe if preferential attachment were occurring in the Mugana network.
+
+## Comparing Graph-Level Characteristics
+
+We can also compare several characteristics of these two networks at the graph level, as shown in the table below:
+
+```{r, results = 'asis'}
+
+plot_df <- as.data.frame(matrix(data = NA, ncol = 6, nrow = 2))
+names(plot_df) <- c('Village', 'density', 'reciprocity', 'transitivity', 'degree_assortativity', 'ethnic_assortativity')
+
+plot_df$Village <- c('Abalang', 'Mugana')
+plot_df$density <- c(sna::gden(abnet),
+                     sna::gden(munet))
+
+plot_df$reciprocity <- c(sna::grecip(abnet, measure='correlation'),
+                         sna::grecip(munet, measure='correlation'))
+
+plot_df$transitivity <- c(sna::gtrans(abnet, mode="digraph", measure=c("weak")),
+                          sna::gtrans(munet, mode="digraph", measure=c("weak")))
+
+abnet_ig <- intergraph::asIgraph(abnet)
+munet_ig <- intergraph::asIgraph(munet)
+
+plot_df$degree_assortativity <- c(igraph::assortativity_degree(abnet_ig, directed = T),
+                                  igraph::assortativity_degree(munet_ig, directed = T))
+
+plot_df$ethnic_assortativity <- c(NA,#igraph::assortativity_nominal(abnet_ig, types = as.factor(igraph::V(abnet_ig)$Tribe),  directed = T),
+                                  igraph::assortativity_nominal(munet_ig, types = as.factor(igraph::V(munet_ig)$Tribe),  directed = T))
+
+stargazer::stargazer(plot_df, summary = F, type = 'html')
+```
+
+First, recalculating the density of the two graphs, we observe as Larson & Lewis did that the Mugana network is denser than the Abalang network. We also see that both of these networks exhibit similar levels of reciprocity and transitivity, indicating that in both villages there are similar tendencies for villagers to send social ties to those from whom they receive ties, and for villagers with mutual ties to themselves be connected. However, when we consider the assortativity of these networks, the similarities end. In the Mugana network, villagers exhibit degree assortivity, indicating that there is a tendency for nodes with similar numbers of ties to seek out connections with each other. In the Abalang network, villagers do not exhibit this tendency, and are actually marginally disassortative by degree. When we consider assortativity by ethnicity, we see that the Mugana network appears to demonstrate a relatively strong tendency for coethnic preferential attachment, suggesting support for H1. However, since the Abalang village is functionally homogeneous, a direct comparision cannot be made, so it remains an open question whether the Mugana network is unique in this regard. This information is displayed visually in the plot below:
+
+```{r}
+
+plot_df <- reshape2::melt(plot_df, id.vars = 'Village')
+
+ggplot(plot_df, aes(x = variable, y = value, group = Village, fill = Village))+
+  geom_bar(stat = 'identity', position = 'dodge')+
+  labs(x = NULL, title = 'Comparaing Graph-Level Characteristics, Abalang and Mugana')+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+# Reproduction of original results
 
 ```{r, results=F}
 #######################################
@@ -1223,3 +1317,4 @@ stargazer(pass1, pass2, pass3, pass4, pass5, type = 'html')
 
 ##########
 ```
+
